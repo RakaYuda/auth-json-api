@@ -1,8 +1,8 @@
 const config = require("../config/auth.config");
+const { v4: uuidv4 } = require("uuid");
 const fs = require('fs');
 
 var jwt = require("jsonwebtoken");
-var bcrypt = require("bcryptjs");
 
 const dataPath = "./app/data/user-data.json";
 
@@ -35,6 +35,27 @@ const findExistedUsername = (username) => {
   }
 }
 
+const createRefreshToken = async () => {
+  let expiredAt = new Date();
+
+  expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
+
+  let _token = uuidv4();
+
+  //inserting a new refresh token to db
+  let refreshToken = await this.create({
+    token: _token,
+    userId: user.id,
+    expiryDate: expiredAt.getTime(),
+  });
+
+  return refreshToken.token;
+}
+
+const verifyExpiration = (token) => {
+  return token.expiryDate.getTime() < new Date().getTime();
+}
+
 exports.signup = (req, res) => {
 
   const existAccounts = getAccountData();
@@ -51,50 +72,106 @@ exports.signup = (req, res) => {
     [newAccountId]: newAccount
   }
 
-  const existedUsername = findExistedUsername(username);
-  const { isExist } = existedUsername;
-
-  if (isExist) {
-    res.send({ success: false, msg: "ERROR_USERNAME_NOT_AVAILABLE" })
+  try {
+    saveAccountData(newAccounts);
+    res.send({ success: true, message: "SUCCESS_USER_REGISTER" });
+  } catch (err) {
+    res.status(500).send({ message: err.message });
   }
-
-  saveAccountData(newAccounts);
-  res.send({ success: true, msg: "SUCCESS_USER_REGISTER" })
-
 };
 
 exports.signin = (req, res) => {
-  const { username, email, password } = req.body;
+  const { username } = req.body;
   const existedUsername = findExistedUsername(username);
-  const { isExist, userData } = existedUsername;
+  const { userData } = existedUsername;
 
-  if (!isExist) {
-    return res.status(404).send({ message: "ERROR_USER_NOT_FOUND" });
-  }
-
-  let passwordIsValid = bcrypt.compareSync(
-    password,
-    userData.password
-  );
-
-  if (!passwordIsValid) {
-    return res.status(401).send({
-      accessToken: null,
-      message: "ERROR_INVALID_PASSWORD"
+  try {
+    let token = jwt.sign({ id: userData.username }, config.secret, {
+      expiresIn: 86400 // 24 hours
     });
+
+    res.status(200).send({
+      username: userData.username,
+      email: userData.email,
+      accessToken: token
+    });
+  } catch (err) {
+    res.status(500).send({ message: err.message });
   }
-
-  let token = jwt.sign({ id: userData.username }, config.secret, {
-    expiresIn: 86400 // 24 hours
-  });
-
-  res.status(200).send({
-    username: userData.username,
-    email: userData.email,
-    accessToken: token
-  });
-
 };
+
+// exports.refreshToken = async (req, res) => {
+//   const { refreshToken: requestToken } = req.body;
+
+//   if (requestToken == null) {
+//     return res.status(403).json({ message: "Refresh Token is required!" });
+//   }
+
+//   try {
+
+//     //find refresh token in db
+//     let refreshToken = await RefreshToken.findOne({ where: { token: requestToken } });
+
+//     console.log(refreshToken)
+
+//     if (!refreshToken) {
+//       res.status(403).json({ message: "Refresh token is not in database!" });
+//       return;
+//     }
+
+//     //check if refresh token was expired and delete it from database
+//     if (RefreshToken.verifyExpiration(refreshToken)) {
+
+//       RefreshToken.destroy({ where: { id: refreshToken.id } });
+
+//       res.status(403).json({
+//         message: "Refresh token was expired. Please make a new signin request",
+//       });
+//       return;
+//     }
+
+//     //get a new access token
+//     const user = await refreshToken.getUser();
+//     let newAccessToken = jwt.sign({ id: user.id }, config.secret, {
+//       expiresIn: config.jwtExpiration,
+//     });
+
+//     //returning new access token and new refresh token
+//     return res.status(200).json({
+//       accessToken: newAccessToken,
+//       refreshToken: refreshToken.token,
+//     });
+
+//   } catch (err) {
+//     return res.status(500).send({ message: err });
+//   }
+// };
+
+
+
+// exports.refreshToken = () => {
+//   const refreshToken = {};
+//   refreshToken.createToken = async function (user) {
+//     let expiredAt = new Date();
+
+//     expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
+
+//     let _token = uuidv4();
+
+//     let refreshToken = await this.create({
+//       token: _token,
+//       userId: user.id,
+//       expiryDate: expiredAt.getTime(),
+//     });
+
+//     return refreshToken.token;
+//   };
+
+//   refreshToken.verifyExpiration = (token) => {
+//     return token.expiryDate.getTime() < new Date().getTime();
+//   };
+
+// };
 
 // exports.signin = (req, res) => {
 //   User.findOne({
