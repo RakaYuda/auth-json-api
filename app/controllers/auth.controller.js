@@ -1,64 +1,36 @@
 const config = require("../config/auth.config");
+const { userModel } = require("../models");
+
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
-const fs = require('fs');
 
-var jwt = require("jsonwebtoken");
+const { addUser, getAllUser, findOne } = userModel;
 
-const dataPath = "./app/data/user-data.json";
+// const createRefreshToken = async () => {
+//   let expiredAt = new Date();
 
-const saveAccountData = (data) => {
-  const stringifyData = JSON.stringify(data)
-  fs.writeFileSync(dataPath, stringifyData)
-}
+//   expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
 
-const getAccountData = () => {
-  const jsonData = fs.readFileSync(dataPath)
-  return JSON.parse(jsonData)
-}
+//   let _token = uuidv4();
 
-const findExistedUsername = (username) => {
-  const existAccounts = getAccountData();
-  let isExist = false;
-  let userData = {};
+//   //inserting a new refresh token to db
+//   let refreshToken = await this.create({
+//     token: _token,
+//     userId: user.id,
+//     expiryDate: expiredAt.getTime(),
+//   });
 
-  Object.keys(existAccounts).forEach((account) => {
-    if (existAccounts[account].username === username) {
-      isExist = true;
-      userData = {
-        ...userData,
-        ...existAccounts[account]
-      }
-    }
-  });
-  return {
-    isExist, userData
-  }
-}
+//   return refreshToken.token;
+// }
 
-const createRefreshToken = async () => {
-  let expiredAt = new Date();
-
-  expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
-
-  let _token = uuidv4();
-
-  //inserting a new refresh token to db
-  let refreshToken = await this.create({
-    token: _token,
-    userId: user.id,
-    expiryDate: expiredAt.getTime(),
-  });
-
-  return refreshToken.token;
-}
-
-const verifyExpiration = (token) => {
-  return token.expiryDate.getTime() < new Date().getTime();
-}
+// const verifyExpiration = (token) => {
+//   return token.expiryDate.getTime() < new Date().getTime();
+// }
 
 exports.signup = (req, res) => {
 
-  const existAccounts = getAccountData();
+  const existAccounts = getAllUser();
   const newAccountId = Math.floor(100000 + Math.random() * 900000);
   const { username, email, password } = req.body;
   const newAccount = {
@@ -73,7 +45,7 @@ exports.signup = (req, res) => {
   }
 
   try {
-    saveAccountData(newAccounts);
+    addUser(newAccounts);
     res.send({ success: true, message: "SUCCESS_USER_REGISTER" });
   } catch (err) {
     res.status(500).send({ message: err.message });
@@ -82,7 +54,7 @@ exports.signup = (req, res) => {
 
 exports.signin = (req, res) => {
   const { username } = req.body;
-  const existedUsername = findExistedUsername(username);
+  const existedUsername = findOne(username);
   const { userData } = existedUsername;
 
   try {
@@ -91,8 +63,7 @@ exports.signin = (req, res) => {
     });
 
     res.status(200).send({
-      username: userData.username,
-      email: userData.email,
+      userData,
       accessToken: token
     });
   } catch (err) {
