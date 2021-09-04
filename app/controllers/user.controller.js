@@ -2,15 +2,15 @@ const fs = require('fs');
 
 const dataPath = "./app/data/user-data.json";
 
-const getAccountData = () => {
-    const jsonData = fs.readFileSync(dataPath)
-    return JSON.parse(jsonData)
-}
+// const getAccountData = () => {
+//     const jsonData = fs.readFileSync(dataPath)
+//     return JSON.parse(jsonData)
+// }
 
-exports.getList = (req, res) => {
-    const accounts = getAccountData();
-    res.send(accounts);
-}
+// exports.getList = (req, res) => {
+//     const accounts = getAccountData();
+//     res.send(accounts);
+// }
 
 exports.allAccess = (req, res) => {
     res.status(200).send("Public Content.");

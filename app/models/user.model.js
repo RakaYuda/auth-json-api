@@ -22,7 +22,8 @@ const findOne = (username) => {
             isExist = true;
             userData = {
                 ...userData,
-                ...existAccounts[account]
+                ...existAccounts[account],
+                userId: account
             }
         }
     });
