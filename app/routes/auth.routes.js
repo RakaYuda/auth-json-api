@@ -1,7 +1,7 @@
 const { verifySignUp, verifySignIn } = require("../middleware");
 const controller = require("../controllers/auth.controller");
 
-const { signup, signin } = controller;
+const { signup, signin, refreshToken } = controller;
 
 module.exports = function (app) {
     app.use(function (req, res, next) {
@@ -27,5 +27,10 @@ module.exports = function (app) {
             verifySignIn.verifyUserLogin
         ],
         signin
+    );
+
+    app.post(
+        "/api/auth/refresh-token",
+        refreshToken
     );
 };
