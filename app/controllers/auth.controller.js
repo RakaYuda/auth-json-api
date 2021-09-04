@@ -4,29 +4,81 @@ const { userModel } = require("../models");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
+const tokenModel = require("../models/token.model");
 
 const { addUser, getAllUser, findOne } = userModel;
+const { saveRefreshToken, getAllRefreshToken, findOneToken } = tokenModel;
 
-// const createRefreshToken = async () => {
-//   let expiredAt = new Date();
+const createRefreshToken = async (userId) => {
+  const expiredAt = new Date();
 
-//   expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
+  expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
 
-//   let _token = uuidv4();
+  const _token = uuidv4();
 
-//   //inserting a new refresh token to db
-//   let refreshToken = await this.create({
-//     token: _token,
-//     userId: user.id,
-//     expiryDate: expiredAt.getTime(),
-//   });
+  const refreshToken = {
+    token: _token,
+    userId: userId,
+    expiryDate: expiredAt.getTime(),
+  };
 
-//   return refreshToken.token;
-// }
+  return refreshToken;
+}
 
-// const verifyExpiration = (token) => {
-//   return token.expiryDate.getTime() < new Date().getTime();
-// }
+const verifyExpiration = (token) => {
+  return token.expiryDate < new Date().getTime();
+}
+
+exports.refreshToken = async (req, res) => {
+  const { refreshToken: requestToken } = req.body;
+  const listRefreshTokens = getAllRefreshToken();
+
+  if (requestToken == null) {
+    return res.status(403).json({ message: "Refresh Token is required!" });
+  }
+
+  try {
+
+    //find refresh token in db
+    const { isExist, foundToken: refreshToken } = findOneToken(requestToken);
+
+    if (!isExist) {
+      res.status(403).json({ success: true, message: "ERROR_INVALID_REFRESH_TOKEN" });
+      return;
+    }
+
+    // check if refresh token was expired and delete it from database
+    if (verifyExpiration(refreshToken)) {
+      const indexObj = listRefreshTokens.indexOf(refreshToken);
+
+      const newlistRefreshTokens = listRefreshTokens.splice(indexObj);
+
+      saveRefreshToken(newlistRefreshTokens);
+      res.status(403).json({
+        message: "Refresh token was expired. Please make a new signin request",
+      });
+      return;
+    }
+
+    //get a new access token
+    const userId = refreshToken.userId;
+    let newAccessToken = jwt.sign({ id: userId }, config.secret, {
+      expiresIn: config.jwtExpiration,
+    });
+
+
+    return res.status(200).json({
+      accessToken: newAccessToken,
+      refreshToken: refreshToken.token,
+      success: true,
+      message: "SUCCESS_REQUEST_REFRESH_TOKEN"
+    });
+
+  } catch (err) {
+    return res.status(500).send({ message: err });
+  }
+};
+
 
 exports.signup = (req, res) => {
 
@@ -52,140 +104,33 @@ exports.signup = (req, res) => {
   }
 };
 
-exports.signin = (req, res) => {
+exports.signin = async (req, res) => {
   const { username } = req.body;
-  const existedUsername = findOne(username);
-  const { userData } = existedUsername;
+  const existedUser = findOne(username);
+  const { username: existedUsername, userId } = existedUser.userData;
 
   try {
-    let token = jwt.sign({ id: userData.username }, config.secret, {
-      expiresIn: 86400 // 24 hours
+    let token = jwt.sign({ id: existedUsername }, config.secret, {
+      expiresIn: config.jwtExpiration
     });
 
+    let refreshToken = await createRefreshToken(userId);
+
+    const listRefreshTokens = getAllRefreshToken();
+
+    const newListRefreshToken = [
+      ...listRefreshTokens,
+      refreshToken
+    ];
+
+    saveRefreshToken(newListRefreshToken);
+
     res.status(200).send({
-      userData,
-      accessToken: token
+      username: existedUsername,
+      refreshToken: refreshToken.token,
+      accessToken: token,
     });
   } catch (err) {
     res.status(500).send({ message: err.message });
   }
 };
-
-// exports.refreshToken = async (req, res) => {
-//   const { refreshToken: requestToken } = req.body;
-
-//   if (requestToken == null) {
-//     return res.status(403).json({ message: "Refresh Token is required!" });
-//   }
-
-//   try {
-
-//     //find refresh token in db
-//     let refreshToken = await RefreshToken.findOne({ where: { token: requestToken } });
-
-//     console.log(refreshToken)
-
-//     if (!refreshToken) {
-//       res.status(403).json({ message: "Refresh token is not in database!" });
-//       return;
-//     }
-
-//     //check if refresh token was expired and delete it from database
-//     if (RefreshToken.verifyExpiration(refreshToken)) {
-
-//       RefreshToken.destroy({ where: { id: refreshToken.id } });
-
-//       res.status(403).json({
-//         message: "Refresh token was expired. Please make a new signin request",
-//       });
-//       return;
-//     }
-
-//     //get a new access token
-//     const user = await refreshToken.getUser();
-//     let newAccessToken = jwt.sign({ id: user.id }, config.secret, {
-//       expiresIn: config.jwtExpiration,
-//     });
-
-//     //returning new access token and new refresh token
-//     return res.status(200).json({
-//       accessToken: newAccessToken,
-//       refreshToken: refreshToken.token,
-//     });
-
-//   } catch (err) {
-//     return res.status(500).send({ message: err });
-//   }
-// };
-
-
-
-// exports.refreshToken = () => {
-//   const refreshToken = {};
-//   refreshToken.createToken = async function (user) {
-//     let expiredAt = new Date();
-
-//     expiredAt.setSeconds(expiredAt.getSeconds() + config.jwtRefreshExpiration);
-
-//     let _token = uuidv4();
-
-//     let refreshToken = await this.create({
-//       token: _token,
-//       userId: user.id,
-//       expiryDate: expiredAt.getTime(),
-//     });
-
-//     return refreshToken.token;
-//   };
-
-//   refreshToken.verifyExpiration = (token) => {
-//     return token.expiryDate.getTime() < new Date().getTime();
-//   };
-
-// };
-
-// exports.signin = (req, res) => {
-//   User.findOne({
-//     where: {
-//       username: req.body.username
-//     }
-//   })
-//     .then(user => {
-//       if (!user) {
-//         return res.status(404).send({ message: "User Not found." });
-//       }
-
-//       var passwordIsValid = bcrypt.compareSync(
-//         req.body.password,
-//         user.password
-//       );
-
-//       if (!passwordIsValid) {
-//         return res.status(401).send({
-//           accessToken: null,
-//           message: "Invalid Password!"
-//         });
-//       }
-
-//       var token = jwt.sign({ id: user.id }, config.secret, {
-//         expiresIn: 86400 // 24 hours
-//       });
-
-//       var authorities = [];
-//       user.getRoles().then(roles => {
-//         for (let i = 0; i < roles.length; i++) {
-//           authorities.push("ROLE_" + roles[i].name.toUpperCase());
-//         }
-//         res.status(200).send({
-//           id: user.id,
-//           username: user.username,
-//           email: user.email,
-//           roles: authorities,
-//           accessToken: token
-//         });
-//       });
-//     })
-//     .catch(err => {
-//       res.status(500).send({ message: err.message });
-//     });
-// };
